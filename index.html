@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Life RPG</title>
+
+<style>
+body{
+margin:0;
+font-family:Arial;
+background:#070a12;
+color:#fff;
+display:flex;
+flex-direction:column;
+height:100vh;
+}
+
+header{
+padding:12px;
+display:flex;
+justify-content:space-between;
+align-items:center;
+background:#0d1220;
+border-bottom:1px solid #1c2740;
+font-size:14px;
+}
+
+#xpbar{
+height:6px;
+background:#1c2740;
+margin:8px 12px;
+border-radius:10px;
+overflow:hidden;
+}
+
+#xpfill{
+height:100%;
+width:0%;
+background:#4f8cff;
+transition:.3s;
+}
+
+#quests{
+flex:1;
+overflow:auto;
+padding:10px;
+display:flex;
+flex-direction:column;
+gap:10px;
+}
+
+.card{
+background:#111a2f;
+padding:12px;
+border-radius:10px;
+border:1px solid #223055;
+}
+
+.badge{
+font-size:12px;
+opacity:.7;
+}
+
+button{
+margin-top:8px;
+padding:8px;
+border:none;
+border-radius:8px;
+background:#4f8cff;
+color:white;
+width:100%;
+}
+
+#input{
+display:flex;
+padding:10px;
+border-top:1px solid #1c2740;
+gap:8px;
+}
+
+input{
+flex:1;
+padding:10px;
+border-radius:8px;
+border:none;
+background:#111a2f;
+color:white;
+}
+
+#send{
+padding:10px;
+border:none;
+border-radius:8px;
+background:#4f8cff;
+color:white;
+}
+
+small{opacity:.6}
+</style>
+</head>
+
+<body>
+
+<header>
+<div>🎮 Life RPG</div>
+<div id="stats">XP: 0 | Streak: 0</div>
+</header>
+
+<div id="xpbar"><div id="xpfill"></div></div>
+
+<div id="quests"></div>
+
+<div id="input">
+<input id="msg" placeholder="Tell me what you did today...">
+<button onclick="report()">Send</button>
+</div>
+
+<script>
+const API_KEY = "AQ.Ab8RN6JK0ldf6auQa-xJ1oKo3Zf44x_A79gHG5eyc054lQ0r2Q";
+
+let xp = +localStorage.getItem("xp") || 0;
+let streak = +localStorage.getItem("streak") || 0;
+let history = JSON.parse(localStorage.getItem("history")||"[]");
+
+function save(){
+localStorage.setItem("xp",xp);
+localStorage.setItem("streak",streak);
+localStorage.setItem("history",JSON.stringify(history));
+updateUI();
+}
+
+function updateUI(){
+document.getElementById("stats").innerText = `XP: ${xp} | Streak: ${streak}`;
+document.getElementById("xpfill").style.width = Math.min(xp%100,100)+"%";
+}
+
+function addQuest(q,level){
+let div=document.createElement("div");
+div.className="card";
+div.innerHTML=`
+<div class="badge">${level}</div>
+<div>${q}</div>
+<button onclick="complete(this,'${q}')">Complete</button>
+`;
+quests.appendChild(div);
+}
+
+function clearQuests(){
+quests.innerHTML="";
+}
+
+async function generateQuests(context=""){
+clearQuests();
+
+let res = await fetch(
+`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
+{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({
+contents:[{
+parts:[{text:`
+You are a life RPG quest generator.
+
+Tone:
+- motivational
+- slightly sarcastic (Duolingo-style playful roast allowed)
+- never insulting or toxic
+
+User history:
+${JSON.stringify(history.slice(-5))}
+
+User message:
+${context}
+
+Generate EXACTLY 3 quests:
+1 EASY
+2 MEDIUM
+3 HARD
+
+Rules:
+- real-world actions
+- <2 hours each
+- adaptive difficulty based on user history
+- short and clear
+Return format:
+EASY: ...
+MEDIUM: ...
+HARD: ...
+`}]
+}]
+})
+}
+);
+
+let data = await res.json();
+let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+let lines = text.split("\n");
+
+lines.forEach(l=>{
+if(l.startsWith("EASY:")) addQuest(l.replace("EASY:",""),"🟢 EASY");
+if(l.startsWith("MEDIUM:")) addQuest(l.replace("MEDIUM:",""),"🟡 MEDIUM");
+if(l.startsWith("HARD:")) addQuest(l.replace("HARD:",""),"🔴 HARD");
+});
+}
+
+function complete(btn,quest){
+btn.parentElement.remove();
+
+let rating = prompt("How hard was it? (1-5)");
+rating = +rating || 3;
+
+xp += rating*10;
+
+if(rating>=4) xp += 10;
+
+history.push({quest,rating});
+
+if(rating<=2) streak = Math.max(0,streak-1);
+else streak++;
+
+save();
+}
+
+async function report(){
+let text = msg.value.trim();
+if(!text) return;
+
+history.push({report:text});
+msg.value="";
+
+await generateQuests(text);
+}
+
+updateUI();
+generateQuests("start");
+</script>
+
+</body>
+</html>
